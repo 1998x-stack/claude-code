@@ -1,0 +1,9 @@
+
+# Local analysis files
+.DS_Store
+TODO.md
+CLAUDE.md
+ast.json
+analysis/
+**/*.analysis.md
+**/.DS_Store
