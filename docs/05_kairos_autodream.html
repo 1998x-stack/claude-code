@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code 源码泄露深度解析（五）：KAIROS——"合适时机"的自主守护进程与 AutoDream - Claude Code 源码解析</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0F172A;
+            --bg-secondary: #1E293B;
+            --bg-tertiary: #334155;
+            --text-primary: #F8FAFC;
+            --text-secondary: #CBD5E1;
+            --accent-cyan: #00FFFF;
+            --accent-purple: #8B5CF6;
+            --accent-pink: #EC4899;
+            --accent-green: #10B981;
+            --border-color: #334155;
+            --shadow-glow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'IBM Plex Sans', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 20%),
+                radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.1) 0%, transparent 20%),
+                repeating-linear-gradient(45deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 11px),
+                repeating-linear-gradient(-45deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 11px);
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 1000;
+            padding: 1rem 2rem;
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-shadow: var(--shadow-glow);
+            letter-spacing: 2px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+            flex-wrap: wrap;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            position: relative;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent-cyan);
+            text-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent-cyan);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        /* Main Content */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 6rem 2rem 4rem;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 4rem;
+            animation: fadeInDown 1s ease;
+        }
+
+        .header h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 3.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+            letter-spacing: 3px;
+            line-height: 1.2;
+        }
+
+        .header .subtitle {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Article */
+        .article {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 3rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            animation: fadeInUp 1s ease 0.2s both;
+        }
+
+        .article h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2.5rem;
+            color: var(--accent-cyan);
+            margin: 0 0 2rem 0;
+            border-bottom: 2px solid var(--accent-purple);
+            padding-bottom: 1rem;
+        }
+
+        .article h2 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2rem;
+            color: var(--accent-cyan);
+            margin: 2rem 0 1rem;
+            border-bottom: 2px solid var(--accent-purple);
+            padding-bottom: 0.5rem;
+        }
+
+        .article h3 {
+            font-size: 1.5rem;
+            color: var(--accent-purple);
+            margin: 1.5rem 0 0.75rem;
+        }
+
+        .article h4 {
+            font-size: 1.2rem;
+            color: var(--accent-pink);
+            margin: 1rem 0 0.5rem;
+        }
+
+        .article p {
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .article blockquote {
+            border-left: 4px solid var(--accent-green);
+            padding-left: 1.5rem;
+            margin: 2rem 0;
+            font-style: italic;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 1.5rem;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .article code {
+            background: var(--bg-tertiary);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            color: var(--accent-green);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        .article pre {
+            background: var(--bg-tertiary);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+            border: 1px solid var(--border-color);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .article pre code {
+            background: none;
+            padding: 0;
+            color: var(--accent-cyan);
+        }
+
+        .article ul, .article ol {
+            margin: 1.5rem 0;
+            padding-left: 2rem;
+        }
+
+        .article li {
+            margin-bottom: 0.5rem;
+        }
+
+        .article table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .article thead {
+            background: var(--accent-purple);
+        }
+
+        .article th {
+            color: white;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .article td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .article tbody tr:hover {
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .article tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .article hr {
+            border: none;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+            margin: 3rem 0;
+        }
+
+        .article a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            border-bottom: 1px dashed var(--accent-cyan);
+            transition: all 0.3s ease;
+        }
+
+        .article a:hover {
+            color: var(--accent-pink);
+            border-bottom: 1px solid var(--accent-pink);
+        }
+
+        .article strong {
+            color: var(--accent-cyan);
+        }
+
+        .article em {
+            color: var(--accent-pink);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 4rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2.5rem;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+            
+            .article {
+                padding: 2rem;
+            }
+            
+            .container {
+                padding: 5rem 1rem 3rem;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-purple);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-cyan);
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="nav-container">
+            <div class="logo">CLAUDE CODE</div>
+            <ul class="nav-links">
+                <li><a href="index.html">首页</a></li>
+                <li><a href="01_overview_architecture.html">架构概览</a></li>
+                <li><a href="02_agent_engine_tools.html">Agent引擎</a></li>
+                <li><a href="03_memory_architecture.html">记忆系统</a></li>
+                <li><a href="04_coordinator_mode.html">协调器</a></li>
+                <li><a href="05_kairos_autodream.html">KAIROS</a></li>
+                <li><a href="06_security_antidistillation.html">安全机制</a></li>
+                <li><a href="07_terminal_renderer_features.html">终端渲染</a></li>
+                <li><a href="08_engineering_summary.html">工程总结</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <header class="header">
+            <h1>Claude Code 源码泄露深度解析（五）：KAIROS——"合适时机"的自主守护进程与 AutoDream</h1>
+            <p class="subtitle">人类在快速眼动睡眠（REM Sleep）中，大脑会回放、整合和巩固白天的记忆，去除不重要的细节，强化关键知识，解决之前的认知矛盾。</p>
+        </header>
+
+        <article class="article">
+            <h1>Claude Code 源码泄露深度解析（五）：KAIROS——"合适时机"的自主守护进程与 AutoDream</h1>
+<p>
+<blockquote><strong>系列索引</strong> | 本篇为第五篇：KAIROS 自主守护进程 + AutoDream 记忆整合系统</blockquote>
+<p>
+<hr></p>
+<p>
+<h2>一、KAIROS 是什么？从古希腊语说起</h2>
+<p>
+<strong>KAIROS</strong>（καιρός）是古希腊语中"<strong>合适时机</strong>"的意思，区别于 Chronos（线性时间），它指的是<strong>质的时间、恰当的时机</strong>。</p>
+<p>
+这个命名不是偶然的——它体现了这个功能的核心理念：AI 不应该只在用户召唤时才工作，而应该在<strong>合适的时机</strong>主动行动。</p>
+<p>
+泄露代码显示，KAIROS 在整个 Claude Code 代码库中被引用超过 <strong>150 次</strong>，由 <code>PROACTIVE</code> 和 <code>KAIROS</code> 两个编译时 Feature Flag 控制，在外部发布版本中完全不可见。</p>
+<p>
+这是迄今为止泄露内容中<strong>最具战略意义的产品路线图</strong>揭示。</p>
+<p>
+<hr></p>
+<p>
+<h2>二、KAIROS 的核心特性</h2>
+<p>
+<h3>2.1 常驻守护进程模式</h3>
+<p>
+KAIROS 将 Claude Code 从一个"被动响应"工具变成一个"<strong>主动运作</strong>"的 Agent：</p>
+<p>
+<pre><code>传统模式（当前已发布）：</p>
+<p>用户输入 ──→ Claude 响应 ──→ 等待下一个输入（休眠）</p>
+<p>
+KAIROS 模式（未发布）：</p>
+<p>┌─────────────────────────────────────────────────────┐</p>
+<p>│                   KAIROS 守护进程                    │</p>
+<p>│                                                     │</p>
+<p>│  [5分钟定时器]───→ 接收 &lt;tick&gt; 信号                  │</p>
+<p>│       ↑                    │                        │</p>
+<p>│       │                    ▼                        │</p>
+<p>│    等待下一次        分析当前状态                      │</p>
+<p>│    tick             (文件变化？新提交？空闲？)          │</p>
+<p>│                            │                        │</p>
+<p>│                            ▼                        │</p>
+<p>│                    决定是否主动行动                    │</p>
+<p>│                    (代码审查？记忆整合？警报？)         │</p>
+<p>│                            │                        │</p>
+<p>│                    行动 or 继续监控                   │</p>
+<p>└─────────────────────────────────────────────────────┘</p>
+</code></pre>
+<p>
+<h3>2.2 append-only 日志系统</h3>
+<p>
+KAIROS 维护<strong>按天追加的日志文件</strong>，记录：</p>
+<p>
+<pre><code>~/.claude/kairos/</p>
+<p>├── 2026-03-31.log    # 今天的日志</p>
+<p>├── 2026-03-30.log    # 昨天的日志</p>
+<p>└── ...</p>
+</code></pre>
+<p>
+日志内容包括：</p>
+<ul>
+<li><strong>Observations</strong>（观察）：Agent 注意到的事情</li>
+<li><strong>Decisions</strong>（决策）：Agent 做出的决定</li>
+<li><strong>Actions</strong>（行动）：Agent 执行的操作</li>
+<li><strong>Hypotheses</strong>（假设）：Agent 形成的待验证假设</li>
+</ul>
+<p>
+这些日志是 AutoDream 系统的原材料。</p>
+<p>
+<h3>2.3 Brief 输出模式：克制的主动性</h3>
+<p>
+当 KAIROS 需要向用户报告时，它使用一种特殊的输出格式：<strong>Brief Mode</strong>（简洁模式）。</p>
+<p>
+设计理念：一个常驻助手不应该像主动对话模式那样详细，它只在<strong>有真正价值的信息</strong>时才发言，且表达极度简洁，不打扰用户工作流。</p>
+<p>
+类比：这就像从"聊天的朋友"到"专业助手"的区别——只在有重要信息时才发声。</p>
+<p>
+<h3>2.4 KAIROS 专属工具</h3>
+<p>
+KAIROS 拥有一些普通 Claude Code 会话没有的额外工具：</p>
+<p>
+<table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileWatchTool</code></th><th>监控文件系统变化</th></tr><tr><th><code>GitWebhookTool</code></th><th>订阅 Git 仓库事件</th></tr><tr><th><code>DreamTool</code></th><th>触发记忆整合（/dream 命令）</th></tr><tr><th><code>CronScheduler</code></th><th>定时任务调度</th></tr><tr><th><code>BackgroundBashTool</code></th><th>后台执行长时间命令</th></tr><tr><th>阶段</th><th>时间</th><th>内容</th></tr><tr><th>BUDDY 预告</th><th>2026/04/01-07</th><th>作为愚人节彩蛋暗示 KAIROS 来临</th></tr><tr><th>BUDDY 正式发布</th><th>2026/05</th><th>先发布较安全的宠物功能</th></tr><tr><th>KAIROS 内测</th><th>未知</th><th>可能在企业客户中先试点</th></tr><tr><th>KAIROS 全面发布</th><th>未知</th><th>可能在 2026 年下半年</th></tr></tbody></table><table></thead><tbody></tbody></table><table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileWatchTool</code></th><th>监控文件系统变化</th></tr><tr><th><code>GitWebhookTool</code></th><th>订阅 Git 仓库事件</th></tr><tr><th><code>DreamTool</code></th><th>触发记忆整合（/dream 命令）</th></tr><tr><th><code>CronScheduler</code></th><th>定时任务调度</th></tr><tr><th><code>BackgroundBashTool</code></th><th>后台执行长时间命令</th></tr><tr><th>阶段</th><th>时间</th><th>内容</th></tr><tr><th>BUDDY 预告</th><th>2026/04/01-07</th><th>作为愚人节彩蛋暗示 KAIROS 来临</th></tr><tr><th>BUDDY 正式发布</th><th>2026/05</th><th>先发布较安全的宠物功能</th></tr><tr><th>KAIROS 内测</th><th>未知</th><th>可能在企业客户中先试点</th></tr><tr><th>KAIROS 全面发布</th><th>未知</th><th>可能在 2026 年下半年</th></tr></tbody></table><hr>
+<p>
+<h2>三、AutoDream：AI 的"睡眠记忆整合"</h2>
+<p>
+<h3>3.1 生物学灵感</h3>
+<p>
+AutoDream 的灵感来自人类睡眠时的记忆整合机制：</p>
+<p>
+<blockquote>人类在快速眼动睡眠（REM Sleep）中，大脑会回放、整合和巩固白天的记忆，去除不重要的细节，强化关键知识，解决之前的认知矛盾。</blockquote>
+<p>
+AutoDream 试图为 AI Agent 复刻这个过程。</p>
+<p>
+<h3>3.2 AutoDream 的工作流程</h3>
+<p>
+<code>services/autoDream/</code> 目录实现了这个背景记忆整合引擎：</p>
+<p>
+<pre><code>用户闲置超过阈值（N 分钟）</p>
+<p>            │</p>
+<p>            ▼</p>
+<p>┌──────────────────────────────────────────────────┐</p>
+<p>│                  AutoDream 启动                   │</p>
+<p>│                                                  │</p>
+<p>│  1. Fork 一个独立的子 Agent                       │</p>
+<p>│     （与主 Agent 上下文完全隔离）                  │</p>
+<p>└──────────────────────────────────────────────────┘</p>
+<p>            │</p>
+<p>            ▼</p>
+<p>┌──────────────────────────────────────────────────┐</p>
+<p>│              读取今日 KAIROS 日志                  │</p>
+<p>│  + 当前所有 MEMORY.md topic files                │</p>
+<p>└──────────────────────────────────────────────────┘</p>
+<p>            │</p>
+<p>            ▼</p>
+<p>┌──────────────────────────────────────────────────┐</p>
+<p>│                  整合处理                         │</p>
+<p>│                                                  │</p>
+<p>│  · 合并相关的分散观察                              │</p>
+<p>│  · 检测并解决逻辑矛盾                              │</p>
+<p>│  · 将 tentative observations 升华为 verified facts│</p>
+<p>│  · 识别新出现的模式                                │</p>
+<p>│  · 删除过时或冗余信息                              │</p>
+<p>└──────────────────────────────────────────────────┘</p>
+<p>            │</p>
+<p>            ▼</p>
+<p>┌──────────────────────────────────────────────────┐</p>
+<p>│               更新记忆文件                        │</p>
+<p>│                                                  │</p>
+<p>│  · 更新 topic files（新事实、删除旧信息）           │</p>
+<p>│  · 更新 MEMORY.md 索引（时间戳、指针）              │</p>
+<p>│  · 归档今日日志                                    │</p>
+<p>└──────────────────────────────────────────────────┘</p>
+<p>            │</p>
+<p>            ▼</p>
+<p>         完成，主 Agent 恢复</p>
+</code></pre>
+<p>
+<h3>3.3 为什么要 Fork 子 Agent？</h3>
+<p>
+这是一个精妙的工程决策：AutoDream 运行在一个<strong>完全隔离的子 Agent</strong>中，而不是在主 Agent 内部进行。</p>
+<p>
+<strong>原因：</strong></p>
+<ul>
+<li><strong>防止"思路污染"</strong>：AutoDream 的整合过程可能引入大量临时的、中间状态的信息。如果在主 Agent 上下文中运行，这些临时信息会干扰主 Agent 的"思路"</li>
+<li><strong>原子性</strong>：整合结果要么完全成功（写入文件），要么完全不影响（子 Agent 失败，不更新任何文件）</li>
+<li><strong>独立失败</strong>：子 Agent 崩溃不影响用户的主会话</li>
+</ul>
+<p>
+这与 autoCompact 的设计哲学一致：<strong>危险或复杂的操作总是在隔离的子 Agent 中进行</strong>。</p>
+<p>
+<h3>3.4 矛盾解决算法</h3>
+<p>
+记忆整合中最难的问题是：<strong>当两条记忆互相矛盾时，保留哪一条？</strong></p>
+<p>
+Claude Code 的规则（从代码注释推断）：</p>
+<p>
+<pre><code>矛盾解决优先级：</p>
+<ol>
+<li>更近的观察 &gt; 更早的观察（时间权重）</li>
+<li>多次验证的事实 &gt; 单次观察（频率权重）</li>
+<li>显式确认的事实 &gt; 隐式推断（置信度权重）</li>
+<li>用户明确说明的 &gt; Agent 自主推断的（来源权重）</li>
+</ol>
+</code></pre>
+<p>
+例如：</p>
+<ul>
+<li>日志显示"API 返回 401"（上周）vs "API 正常工作"（今天）→ 保留今天的</li>
+<li>"数据库用 PostgreSQL"（单次观察）vs "数据库用 PostgreSQL"（验证 5 次）→ 升格为已验证事实</li>
+</ul>
+<p>
+<hr></p>
+<p>
+<h2>四、GitHub 集成：Webhook 订阅</h2>
+<p>
+KAIROS 的一个特别功能是<strong>订阅 GitHub Webhook</strong>，这意味着：</p>
+<p>
+<pre><code>GitHub 事件 ──→ Webhook ──→ KAIROS ──→ 主动行动</p>
+<p>
+示例场景：</p>
+<ul>
+<li>有人在你的 PR 上留了评论 → KAIROS 主动分析评论并在用户回来时摘要</li>
+<li>CI/CD 流水线失败 → KAIROS 分析失败原因并准备修复建议</li>
+<li>有新的 Issue 被创建 → KAIROS 检查是否与当前工作相关</li>
+<li>代码被 merged → KAIROS 更新相关记忆，清理已解决的 TODO</li>
+</ul>
+</code></pre>
+<p>
+这将 Claude Code 从"本地 CLI 工具"升级为"连接开发生态系统的 Agent"。</p>
+<p>
+<hr></p>
+<p>
+<h2>五、ULTRAPLAN：KAIROS 生态的云端扩展</h2>
+<p>
+在 KAIROS 相关代码中，还有一个名为 <strong>ULTRAPLAN</strong> 的功能值得专门介绍。</p>
+<p>
+<h3>5.1 ULTRAPLAN 的工作原理</h3>
+<p>
+ULTRAPLAN 是一个将复杂规划任务<strong>外包给远程强力算力</strong>的系统：</p>
+<p>
+<pre><code>本地 Claude Code</p>
+<p>        │</p>
+<p>        │ "这个任务太复杂了，需要 ULTRAPLAN"</p>
+<p>        ▼</p>
+<p>┌───────────────────────────────────────┐</p>
+<p>│    Cloud Container Runtime (CCR)      │</p>
+<p>│                                       │</p>
+<p>│  运行：Claude Opus 4.6 (Fennec)       │</p>
+<p>│  时间：最长 30 分钟                    │</p>
+<p>│  任务：复杂架构规划、大规模重构方案     │</p>
+<p>└───────────────────────────────────────┘</p>
+<p>        │</p>
+<p>        │ 生成规划结果</p>
+<p>        ▼</p>
+<p>浏览器弹出确认对话框</p>
+<p>（用户审查 30 分钟深度思考的结果）</p>
+<p>        │</p>
+<p>        │ 用户批准</p>
+<p>        ▼</p>
+<p>特殊 Sentinel 值：__ULTRAPLAN_TELEPORT_LOCAL__</p>
+<p>（将结果"传送"回本地终端）</p>
+<p>        │</p>
+<p>        ▼</p>
+<p>本地 Claude Code 继续执行</p>
+</code></pre>
+<p>
+<h3>5.2 "传送"机制</h3>
+<p>
+<code>__ULTRAPLAN_TELEPORT_LOCAL__</code> 这个哨兵值的存在说明 Anthropic 设计了一种优雅的本地/云端状态同步机制：</p>
+<p>
+当浏览器中的用户批准了 ULTRAPLAN 结果，系统会在本地 Terminal 中注入这个哨兵值，让本地 Agent "感知到"云端任务已完成并获取结果。</p>
+<p>
+这个设计的优雅之处在于：从 Agent 的视角来看，这只是一个普通的工具调用返回值；但实际上，这个值触发了一个跨越本地-云端-浏览器的状态同步流程。</p>
+<p>
+<hr></p>
+<p>
+<h2>六、/dream 斜杠命令</h2>
+<p>
+用户也可以手动触发记忆整合，通过 <code>/dream</code> 命令：</p>
+<p>
+<pre><code class="language-bash">/dream</p>
+</code></pre>
+<p>
+这会立即启动 AutoDream 子 Agent，进行显式的记忆整合。</p>
+<p>
+这个命令特别适合：</p>
+<ul>
+<li>长时间工作后，手动"总结今天的学习"</li>
+<li>在切换项目前，整合当前项目的知识</li>
+<li>感觉 Agent 开始"混乱"时，主动清理记忆</li>
+</ul>
+<p>
+<hr></p>
+<p>
+<h2>七、KAIROS 的隐私考量</h2>
+<p>
+常驻监控 Agent 天然引发隐私问题：</p>
+<p>
+<h3>7.1 KAIROS 监控什么？</h3>
+<p>
+从代码推断，KAIROS 监控：</p>
+<ul>
+<li><strong>文件系统变化</strong>（如 Git 提交、文件修改）</li>
+<li><strong>GitHub Webhook 事件</strong></li>
+<li><strong>用户活跃/闲置状态</strong>（判断是否运行 AutoDream）</li>
+</ul>
+<p>
+<h3>7.2 KAIROS 不监控什么？</h3>
+<p>
+值得注意的是，代码中的遥测系统（下一篇将详细讲解）明确说明<strong>不会记录完整的对话内容或代码内容</strong>。KAIROS 作为一个更"深度监控"的系统，其隐私边界的设计细节目前还不完全清楚。</p>
+<p>
+这是一个未发布功能，也许正是出于隐私问题的考虑，Anthropic 还在谨慎打磨。</p>
+<p>
+<hr></p>
+<p>
+<h2>八、时间表：KAIROS 的发布计划</h2>
+<p>
+从代码中的注释可以推断发布时间线：</p>
+<p>
+<table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileWatchTool</code></th><th>监控文件系统变化</th></tr><tr><th><code>GitWebhookTool</code></th><th>订阅 Git 仓库事件</th></tr><tr><th><code>DreamTool</code></th><th>触发记忆整合（/dream 命令）</th></tr><tr><th><code>CronScheduler</code></th><th>定时任务调度</th></tr><tr><th><code>BackgroundBashTool</code></th><th>后台执行长时间命令</th></tr><tr><th>阶段</th><th>时间</th><th>内容</th></tr><tr><th>BUDDY 预告</th><th>2026/04/01-07</th><th>作为愚人节彩蛋暗示 KAIROS 来临</th></tr><tr><th>BUDDY 正式发布</th><th>2026/05</th><th>先发布较安全的宠物功能</th></tr><tr><th>KAIROS 内测</th><th>未知</th><th>可能在企业客户中先试点</th></tr><tr><th>KAIROS 全面发布</th><th>未知</th><th>可能在 2026 年下半年</th></tr></tbody></table><table></thead><tbody></tbody></table><table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileWatchTool</code></th><th>监控文件系统变化</th></tr><tr><th><code>GitWebhookTool</code></th><th>订阅 Git 仓库事件</th></tr><tr><th><code>DreamTool</code></th><th>触发记忆整合（/dream 命令）</th></tr><tr><th><code>CronScheduler</code></th><th>定时任务调度</th></tr><tr><th><code>BackgroundBashTool</code></th><th>后台执行长时间命令</th></tr><tr><th>阶段</th><th>时间</th><th>内容</th></tr><tr><th>BUDDY 预告</th><th>2026/04/01-07</th><th>作为愚人节彩蛋暗示 KAIROS 来临</th></tr><tr><th>BUDDY 正式发布</th><th>2026/05</th><th>先发布较安全的宠物功能</th></tr><tr><th>KAIROS 内测</th><th>未知</th><th>可能在企业客户中先试点</th></tr><tr><th>KAIROS 全面发布</th><th>未知</th><th>可能在 2026 年下半年</th></tr></tbody></table><hr>
+<p>
+<h2>九、工程洞见：从被动到主动的 Agent 范式转变</h2>
+<p>
+KAIROS 代表了 AI Agent 的下一个进化阶段：</p>
+<p>
+<h3>阶段一：被动问答（ChatGPT 范式）</h3>
+<p>用户问 → AI 答 → 等待</p>
+<p>
+<h3>阶段二：主动执行（Claude Code 当前版本）</h3>
+<p>用户请求 → AI 规划 → AI 执行 → 等待下一个请求</p>
+<p>
+<h3>阶段三：自主守护（KAIROS 范式）</h3>
+<p>AI 持续监控 → 在合适时机主动行动 → 用户回来时已有积累</p>
+<p>
+这个演进路径让人想起从"静态网页"到"Web App"再到"PWA + 后台同步"的演进。AI Agent 也在从"静态响应"走向"动态感知"。</p>
+<p>
+<hr></p>
+<p>
+<h2>十、小结</h2>
+<p>
+KAIROS 和 AutoDream 揭示了 Anthropic 对 AI Agent 未来的愿景：</p>
+<p>
+<ul></p>
+<li><strong>不是工具，而是助手</strong>：持续存在，不需要每次显式召唤</li>
+<li><strong>不只是执行，还会学习</strong>：通过 AutoDream 不断整合和巩固知识</li>
+<li><strong>不只是本地，还连接生态</strong>：通过 GitHub Webhook 感知开发生态的变化</li>
+<li><strong>不只是反应，还会预判</strong>：在合适时机主动提供帮助</li>
+</ul>
+<p>
+当这些功能最终发布时，Claude Code 将从一个"很强的 AI 助手"变成一个"真正的数字团队成员"。</p>
+<p>
+下一篇，我们将深入 Claude Code 的<strong>安全机制</strong>——BashSecurity、权限模型、客户端证明等。</p>
+<p>
+<hr></p>
+<p>
+<em>本文基于公开技术分析报告，仅用于教育目的。</em></p>
+
+        </article>
+
+        <footer class="footer">
+            <p>© 2026 Claude Code Source Code Analysis Series | 基于泄露源码的技术教育分析</p>
+        </footer>
+    </div>
+</body>
+</html>

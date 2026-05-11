@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code 源码泄露深度解析 - 完整系列</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #111111;
+            --bg-tertiary: #1a1a1a;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --accent-cyan: #00ffff;
+            --accent-purple: #8b5cf6;
+            --accent-pink: #ec4899;
+            --accent-green: #10b981;
+            --border-color: #333333;
+            --shadow-glow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 20%),
+                radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.1) 0%, transparent 20%),
+                repeating-linear-gradient(45deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 11px),
+                repeating-linear-gradient(-45deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 11px);
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(10, 10, 10, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 1000;
+            padding: 1rem 2rem;
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 900;
+            color: var(--accent-cyan);
+            text-shadow: var(--shadow-glow);
+            letter-spacing: 2px;
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+            position: relative;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at center, rgba(0, 255, 255, 0.05) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero-content {
+            max-width: 1000px;
+            z-index: 1;
+            animation: fadeInUp 1s ease;
+        }
+
+        .hero h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 5rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 2rem;
+            letter-spacing: 5px;
+            line-height: 1.2;
+        }
+
+        .hero .subtitle {
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            margin-bottom: 3rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .hero .meta {
+            font-size: 1.1rem;
+            color: var(--accent-green);
+            margin-bottom: 2rem;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 1rem 3rem;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink));
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(139, 92, 246, 0.3);
+            letter-spacing: 1px;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(139, 92, 246, 0.5);
+        }
+
+        /* Articles Grid */
+        .articles-section {
+            padding: 6rem 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 3rem;
+            text-align: center;
+            margin-bottom: 4rem;
+            color: var(--accent-cyan);
+            text-shadow: var(--shadow-glow);
+        }
+
+        .articles-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+        }
+
+        .article-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2.5rem;
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .article-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.1), transparent);
+            transition: left 0.6s ease;
+        }
+
+        .article-card:hover::before {
+            left: 100%;
+        }
+
+        .article-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 60px rgba(0, 255, 255, 0.2);
+            border-color: var(--accent-cyan);
+        }
+
+        .article-card h3 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            color: var(--accent-cyan);
+            margin-bottom: 1rem;
+        }
+
+        .article-card .number {
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--accent-purple);
+            opacity: 0.3;
+            position: absolute;
+            top: 1rem;
+            right: 1.5rem;
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .article-card p {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .article-card .read-more {
+            color: var(--accent-pink);
+            text-decoration: none;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .article-card .read-more:hover {
+            color: var(--accent-cyan);
+            gap: 1rem;
+        }
+
+        .article-card .read-more::after {
+            content: '→';
+            transition: transform 0.3s ease;
+        }
+
+        .article-card .read-more:hover::after {
+            transform: translateX(5px);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 4rem 2rem;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        .footer p {
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.8;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 3rem;
+            }
+            
+            .hero .subtitle {
+                font-size: 1.2rem;
+            }
+            
+            .articles-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .section-title {
+                font-size: 2rem;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-purple);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-cyan);
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="nav-container">
+            <div class="logo">CLAUDE CODE</div>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <div class="hero-content">
+            <h1>SOURCE CODE LEAK</h1>
+            <p class="subtitle">深度解析 Anthropic Claude Code 源码泄露事件 - 完整 8 篇技术系列</p>
+            <p class="meta">512,000 行代码 | 1,906 个文件 | 59.8 MB 泄露数据</p>
+            <a href="#articles" class="cta-button">开始探索</a>
+        </div>
+    </section>
+
+    <section id="articles" class="articles-section">
+        <h2 class="section-title">系列文章</h2>
+        
+        <div class="articles-grid">
+            <div class="article-card">
+                <div class="number">01</div>
+                <h3>事件始末与整体架构</h3>
+                <p>2026年3月31日，史上最贵的 .map 文件泄露事件。分析泄露经过、技术栈、目录结构、核心分层架构、入口点多样性以及44个未发布功能开关。</p>
+                <a href="01_overview_architecture.html" class="read-more">阅读全文</a>
+            </div>
+
+            <div class="article-card">
+                <div class="number">02</div>
+                <h3>核心 Agent 引擎与 40+ 工具系统</h3>
+                <p>深入 785KB 的 main.tsx，解析 Agent 主循环设计、工具调用反馈循环、40+ 内置工具分类、BashSecurity 权限模型与工具描述即产品的设计哲学。</p>
+                <a href="02_agent_engine_tools.html" class="read-more">阅读全文</a>
+            </div>
+
+            <div class="article-card">
+                <div class="number">03</div>
+                <h3>三层记忆架构：Self-Healing MEMORY.md</h3>
+                <p>探索 MEMORY.md + Topic Files + Transcripts 三层架构、Strict Write Discipline、AutoDream 记忆整合守护进程、memdir 文件锁与原子操作机制。</p>
+                <a href="03_memory_architecture.html" class="read-more">阅读全文</a>
+            </div>
+
+            <div class="article-card">
+                <div class="number">04</div>
+                <h3>多智能体协调器：Coordinator Mode</h3>
+                <p>解析 Coordinator 模式架构、Worker Agents 通信机制、任务分发策略、负载均衡与故障恢复、以及多智能体协作的底层实现。</p>
+                <a href="04_coordinator_mode.html" class="read-more">阅读全文</a>
+            </div>
+
+            <div class="article-card">
+                <div class="number">05</div>
+                <h3>KAIROS 自主守护进程与 AutoDream</h3>
+                <p>揭秘未发布的 KAIROS 常驻后台系统、自主行为触发机制、Proactive 模式、后台记忆整合流程以及守护进程的架构设计。</p>
+                <a href="05_kairos_autodream.html" class="read-more">阅读全文</a>
+            </div>
+
+            <div class="article-card">
+                <div class="number">06</div>
+                <h3>安全机制：BashSecurity、权限模型与客户端证明</h3>
+                <p>深度解析 Bash 命令安全沙箱、权限检查系统、用户确认流程、Anti-Distillation 反蒸馏保护、NATIVE_CLIENT_ATTESTATION 客户端证明机制。</p>
+                <a href="06_security_antidistillation.html" class="read-more">阅读全文</a>
+            </div>
+
+            <div class="article-card">
+                <div class="number">07</div>
+                <h3>终端渲染引擎与未发布功能</h3>
+                <p>Ink 终端 React 渲染器、BUDDY Tamagotchi 宠物系统、ULTRAPLAN 云端规划、VOICE_MODE 语音接口、PENGUIN_MODE 等实验性功能揭秘。</p>
+                <a href="07_terminal_renderer_features.html" class="read-more">阅读全文</a>
+            </div>
+
+            <div class="article-card">
+                <div class="number">08</div>
+                <h3>工程总结：AI Agent 设计哲学</h3>
+                <p>从 512,000 行代码中提炼的六大设计哲学：工具描述即产品、记忆是第一公民、成本驱动架构、Prompt Engineering 是核心工程、安全是用户体验、反脆弱设计。</p>
+                <a href="08_engineering_summary.html" class="read-more">阅读全文</a>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <p>本系列基于 2026 年 3 月 31 日 Anthropic Claude Code 源码泄露事件进行技术分析，仅供技术教育目的使用。<br>
+        源码规模：512,000+ 行代码 | 1,906 个 TypeScript 文件 | 泄露版本：v2.1.88</p>
+    </footer>
+</body>
+</html>

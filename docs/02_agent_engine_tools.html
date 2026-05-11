@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code 源码泄露深度解析（二）：核心 Agent 引擎与 40+ 工具系统 - Claude Code 源码解析</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0F172A;
+            --bg-secondary: #1E293B;
+            --bg-tertiary: #334155;
+            --text-primary: #F8FAFC;
+            --text-secondary: #CBD5E1;
+            --accent-cyan: #00FFFF;
+            --accent-purple: #8B5CF6;
+            --accent-pink: #EC4899;
+            --accent-green: #10B981;
+            --border-color: #334155;
+            --shadow-glow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'IBM Plex Sans', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 20%),
+                radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.1) 0%, transparent 20%),
+                repeating-linear-gradient(45deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 11px),
+                repeating-linear-gradient(-45deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 11px);
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 1000;
+            padding: 1rem 2rem;
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-shadow: var(--shadow-glow);
+            letter-spacing: 2px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+            flex-wrap: wrap;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            position: relative;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent-cyan);
+            text-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent-cyan);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        /* Main Content */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 6rem 2rem 4rem;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 4rem;
+            animation: fadeInDown 1s ease;
+        }
+
+        .header h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 3.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+            letter-spacing: 3px;
+            line-height: 1.2;
+        }
+
+        .header .subtitle {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Article */
+        .article {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 3rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            animation: fadeInUp 1s ease 0.2s both;
+        }
+
+        .article h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2.5rem;
+            color: var(--accent-cyan);
+            margin: 0 0 2rem 0;
+            border-bottom: 2px solid var(--accent-purple);
+            padding-bottom: 1rem;
+        }
+
+        .article h2 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2rem;
+            color: var(--accent-cyan);
+            margin: 2rem 0 1rem;
+            border-bottom: 2px solid var(--accent-purple);
+            padding-bottom: 0.5rem;
+        }
+
+        .article h3 {
+            font-size: 1.5rem;
+            color: var(--accent-purple);
+            margin: 1.5rem 0 0.75rem;
+        }
+
+        .article h4 {
+            font-size: 1.2rem;
+            color: var(--accent-pink);
+            margin: 1rem 0 0.5rem;
+        }
+
+        .article p {
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .article blockquote {
+            border-left: 4px solid var(--accent-green);
+            padding-left: 1.5rem;
+            margin: 2rem 0;
+            font-style: italic;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 1.5rem;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .article code {
+            background: var(--bg-tertiary);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            color: var(--accent-green);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        .article pre {
+            background: var(--bg-tertiary);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+            border: 1px solid var(--border-color);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .article pre code {
+            background: none;
+            padding: 0;
+            color: var(--accent-cyan);
+        }
+
+        .article ul, .article ol {
+            margin: 1.5rem 0;
+            padding-left: 2rem;
+        }
+
+        .article li {
+            margin-bottom: 0.5rem;
+        }
+
+        .article table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .article thead {
+            background: var(--accent-purple);
+        }
+
+        .article th {
+            color: white;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .article td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .article tbody tr:hover {
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .article tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .article hr {
+            border: none;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+            margin: 3rem 0;
+        }
+
+        .article a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            border-bottom: 1px dashed var(--accent-cyan);
+            transition: all 0.3s ease;
+        }
+
+        .article a:hover {
+            color: var(--accent-pink);
+            border-bottom: 1px solid var(--accent-pink);
+        }
+
+        .article strong {
+            color: var(--accent-cyan);
+        }
+
+        .article em {
+            color: var(--accent-pink);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 4rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2.5rem;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+            
+            .article {
+                padding: 2rem;
+            }
+            
+            .container {
+                padding: 5rem 1rem 3rem;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-purple);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-cyan);
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="nav-container">
+            <div class="logo">CLAUDE CODE</div>
+            <ul class="nav-links">
+                <li><a href="index.html">首页</a></li>
+                <li><a href="01_overview_architecture.html">架构概览</a></li>
+                <li><a href="02_agent_engine_tools.html">Agent引擎</a></li>
+                <li><a href="03_memory_architecture.html">记忆系统</a></li>
+                <li><a href="04_coordinator_mode.html">协调器</a></li>
+                <li><a href="05_kairos_autodream.html">KAIROS</a></li>
+                <li><a href="06_security_antidistillation.html">安全机制</a></li>
+                <li><a href="07_terminal_renderer_features.html">终端渲染</a></li>
+                <li><a href="08_engineering_summary.html">工程总结</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <header class="header">
+            <h1>Claude Code 源码泄露深度解析（二）：核心 Agent 引擎与 40+ 工具系统</h1>
+            <p class="subtitle">{</p>
+        </header>
+
+        <article class="article">
+            <h1>Claude Code 源码泄露深度解析（二）：核心 Agent 引擎与 40+ 工具系统</h1>
+<p>
+<blockquote><strong>系列索引</strong> | 本篇为第二篇：核心 Agent 引擎 + Tool System 深度解析</blockquote>
+<p>
+<hr></p>
+<p>
+<h2>一、Agent 引擎核心：从 REPL 到自主执行</h2>
+<p>
+<h3>1.1 主入口：785KB 的 main.tsx</h3>
+<p>
+Claude Code 的主入口文件 <code>main.tsx</code> 体积高达 <strong>785KB</strong>，这在前端/Node 项目中极为罕见。这个文件是整个 Agent 系统的神经中枢，它完成以下核心工作：</p>
+<p>
+<ol></p>
+<li><strong>解析启动模式</strong>（CLI / SDK / MCP / Coordinator / KAIROS）</li>
+<li><strong>初始化上下文</strong>（项目检测、Git 状态、权限体系）</li>
+<li><strong>启动 React+Ink 终端 UI</strong></li>
+<li><strong>驱动主 Agent 循环</strong>（接收用户输入 → 调用 Claude API → 执行工具 → 展示结果）</li>
+</ol>
+<p>
+<h3>1.2 Agent 主循环设计</h3>
+<p>
+Claude Code 的核心执行模型是一个<strong>工具调用反馈循环（Tool-Use Feedback Loop）</strong>：</p>
+<p>
+<pre><code>用户输入</p>
+<p>    │</p>
+<p>    ▼</p>
+<p>┌─────────────────────────────────────────┐</p>
+<p>│           构建系统提示词                  │</p>
+<p>│  (含权限状态、记忆摘要、项目上下文)         │</p>
+<p>└─────────────────────────────────────────┘</p>
+<p>    │</p>
+<p>    ▼</p>
+<p>┌─────────────────────────────────────────┐</p>
+<p>│         调用 Claude API                  │</p>
+<p>│  (含当前工具列表 + 对话历史)               │</p>
+<p>└─────────────────────────────────────────┘</p>
+<p>    │</p>
+<p>    ▼</p>
+<p>    ┌── 模型返回文本响应 ──→ 渲染到终端</p>
+<p>    │</p>
+<p>    └── 模型请求工具调用 ──→ 执行工具</p>
+<p>                                │</p>
+<p>                                ▼</p>
+<p>                        ┌──────────────┐</p>
+<p>                        │  BashSecurity │</p>
+<p>                        │  权限检查      │</p>
+<p>                        │  用户确认      │</p>
+<p>                        └──────────────┘</p>
+<p>                                │</p>
+<p>                                ▼</p>
+<p>                          工具执行结果</p>
+<p>                                │</p>
+<p>                                ▼</p>
+<p>                         追加到对话历史</p>
+<p>                                │</p>
+<p>                                └──→ 回到"调用 Claude API"</p>
+</code></pre>
+<p>
+这个循环持续运行，直到模型不再请求任何工具调用，或者用户中断为止。</p>
+<p>
+<h3>1.3 Context 管理：autoCompact 压缩机制</h3>
+<p>
+当对话历史过长（接近模型上下文窗口上限）时，Claude Code 会触发 <strong>autoCompact</strong> 机制：</p>
+<p>
+<strong>工作原理：</strong></p>
+<ol>
+<li>检测当前 token 使用量接近阈值</li>
+<li>启动一个独立的 Claude 会话</li>
+<li>请求模型将当前对话历史压缩为结构化摘要</li>
+<li>用摘要替换历史记录，继续会话</li>
+</ol>
+<p>
+<strong>一个极具工程价值的真实案例：</strong></p>
+<p>
+在 <code>autoCompact.ts</code> 的注释中，Anthropic 工程师直接写道：</p>
+<p>
+<blockquote>"BQ 2026-03-10：1,279 个会话出现了 50+ 次连续失败（最多 3,272 次），每天全球浪费约 25 万次 API 调用。"</blockquote>
+<p>
+<strong>修复方案：</strong> <code>MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3</code></p>
+<p>
+三行代码，每天节省 25 万次 API 调用。这个注释完美展示了数据驱动工程的价值——用真实线上数据驱动决策，连修复的原因和依据都写进注释里。</p>
+<p>
+<h3>1.4 Prompt Cache 优化：14 个缓存断点追踪器</h3>
+<p>
+当你每个 token 都要付费时，<strong>Prompt Cache 命中率</strong>就是一个账务问题，不只是性能问题。</p>
+<p>
+<code>promptCacheBreakDetection.ts</code> 追踪 <strong>14 个可能导致 prompt cache 失效的因素</strong>，包括：</p>
+<p>
+<ul></p>
+<li>模式切换（如从普通模式切到 Coordinator 模式）</li>
+<li>权限状态变化</li>
+<li>工具列表动态变化</li>
+<li>系统提示词动态段变化</li>
+</ul>
+<p>
+代码中有一个标记为 <code>DANGEROUS_uncachedSystemPromptSection()</code> 的函数，警告开发者：<strong>在系统提示词中添加任何动态内容都会破坏缓存，成本极高</strong>。</p>
+<p>
+多个"粘性锁存器"（sticky latches）机制确保一旦某种模式被激活，就不会因为中间状态变化而频繁重置 cache。</p>
+<p>
+<hr></p>
+<p>
+<h2>二、Tool System：40+ 工具的分类设计</h2>
+<p>
+<h3>2.1 工具总览</h3>
+<p>
+Claude Code 内置了超过 <strong>40 个工具</strong>，分为几个主要类别：</p>
+<p>
+<h4>文件系统工具</h4>
+<p>
+<table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><table></thead><tbody></tbody></table><table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><h4>代码执行工具</h4>
+<p>
+<table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><table></thead><tbody></tbody></table><table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><h4>网络与 API 工具</h4>
+<p>
+<table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><table></thead><tbody></tbody></table><table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><h4>多智能体工具</h4>
+<p>
+<table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><table></thead><tbody></tbody></table><table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><h4>Git 与版本控制工具</h4>
+<p>
+<table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><table></thead><tbody></tbody></table><table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><h4>记忆与状态工具</h4>
+<p>
+<table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><table></thead><tbody></tbody></table><table><thead><tr><th>工具名</th><th>功能</th></tr></thead><tbody><tr><th><code>FileReadTool</code></th><th>读取文件内容（支持部分读取、行范围）</th></tr><tr><th><code>FileWriteTool</code></th><th>写入/创建文件</th></tr><tr><th><code>FileEditTool</code></th><th>精确编辑文件（str_replace 模式）</th></tr><tr><th><code>FileDeleteTool</code></th><th>删除文件</th></tr><tr><th><code>DirectoryListTool</code></th><th>列出目录内容</th></tr><tr><th><code>FileSearchTool</code></th><th>全局文件搜索</th></tr><tr><th><code>GrepTool</code></th><th>内容搜索（支持正则）</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>BashTool</code></th><th>执行 Shell 命令（核心工具，有专门的安全子系统）</th></tr><tr><th><code>NodeTool</code></th><th>执行 Node.js 代码片段</th></tr><tr><th><code>PythonTool</code></th><th>执行 Python 代码片段</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>WebFetchTool</code></th><th>获取网页内容</th></tr><tr><th><code>WebSearchTool</code></th><th>搜索网络</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>AgentTool</code></th><th>生成子 Agent（递归 Agent 调用）</th></tr><tr><th><code>TaskTool</code></th><th>创建并管理后台任务</th></tr><tr><th><code>CoordinatorTool</code></th><th>协调多个 Worker Agent</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>GitCommitTool</code></th><th>创建 commit（含 Undercover Mode）</th></tr><tr><th><code>GitDiffTool</code></th><th>查看 diff</th></tr><tr><th><code>GitLogTool</code></th><th>查看提交历史</th></tr><tr><th><code>PRReviewTool</code></th><th>代码审查辅助</th></tr><tr><th>工具名</th><th>功能</th></tr><tr><th><code>MemoryReadTool</code></th><th>读取 MEMORY.md 及 topic files</th></tr><tr><th><code>MemoryWriteTool</code></th><th>更新记忆索引</th></tr><tr><th><code>TodoReadTool</code></th><th>读取任务列表</th></tr><tr><th><code>TodoWriteTool</code></th><th>更新任务列表</th></tr></tbody></table><h3>2.2 Tool Schema 设计模式</h3>
+<p>
+所有工具都遵循统一的 Schema 设计，使用 <strong>Zod</strong> 进行运行时类型验证：</p>
+<p>
+<pre><code class="language-typescript">// Tool.ts 中的基础接口设计（根据泄露内容推断）</p>
+<p>interface Tool&lt;TInput, TOutput&gt; {</p>
+<p>  name: string;</p>
+<p>  description: string;  // 这里写给模型看的描述，至关重要</p>
+<p>  inputSchema: ZodSchema&lt;TInput&gt;;</p>
+
+<p>  // 权限检查：在执行前决定是否需要用户确认</p>
+<p>  needsPermission: (input: TInput, context: Context) =&gt; PermissionLevel;</p>
+
+<p>  // 实际执行函数</p>
+<p>  execute: (input: TInput, context: Context) =&gt; Promise&lt;TOutput&gt;;</p>
+
+<p>  // 用于展示的格式化函数</p>
+<p>  formatResult: (output: TOutput) =&gt; string;</p>
+<p>}</p>
+</code></pre>
+<p>
+工具描述（<code>description</code>）是写给 Claude 模型看的自然语言说明，这些措辞的质量直接影响模型选择工具的准确性。Anthropic 在这些描述上显然花了大量精力进行 prompt engineering。</p>
+<p>
+<h3>2.3 AgentTool：递归 Agent 架构</h3>
+<p>
+<code>AgentTool</code> 是 Claude Code 最强大的工具之一，允许主 Agent <strong>生成子 Agent</strong> 来并行处理子任务。</p>
+<p>
+<strong>设计原理：</strong></p>
+<p>
+<pre><code>主 Agent (Orchestrator)</p>
+<p>    │</p>
+<p>    ├─── AgentTool 调用 1 ──→ 子 Agent A (分析前端代码)</p>
+<p>    ├─── AgentTool 调用 2 ──→ 子 Agent B (分析后端 API)</p>
+<p>    └─── AgentTool 调用 3 ──→ 子 Agent C (查找相关测试)</p>
+<p>                                        │</p>
+<p>                                        ▼</p>
+<p>                              子 Agent 返回结果</p>
+<p>                                        │</p>
+<p>                                        ▼</p>
+<p>                           主 Agent 整合所有结果</p>
+</code></pre>
+<p>
+每个子 Agent 都有独立的上下文窗口和工具调用能力，但受到以下限制：</p>
+<ul>
+<li><strong>工具白名单</strong>：子 Agent 只能使用主 Agent 授权的工具子集</li>
+<li><strong>递归深度限制</strong>：防止无限嵌套</li>
+<li><strong>Token 预算分配</strong>：每个子 Agent 有独立的 token 配额</li>
+</ul>
+<p>
+<hr></p>
+<p>
+<h2>三、BashTool：23 项安全检查的工程设计</h2>
+<p>
+BashTool 是整个系统中最危险也是最重要的工具。允许 AI Agent 执行任意 Shell 命令，必须有严密的安全机制。</p>
+<p>
+<h3>3.1 bashSecurity.ts：23 项安全检查</h3>
+<p>
+<code>bashSecurity.ts</code> 包含 <strong>23 个按序执行的安全检查</strong>，这是一个真正的<strong>命令行安全专用威胁模型</strong>：</p>
+<p>
+<h4>第一类：命令黑名单</h4>
+<p>
+<pre><code>rm -rf /</p>
+<p>dd if=/dev/zero of=/dev/sda</p>
+<p>mkfs.*</p>
+<p>fdisk /dev/</p>
+<p>...</p>
+</code></pre>
+<p>
+对已知的危险命令进行精确匹配拦截。</p>
+<p>
+<h4>第二类：Zsh 特有威胁（18 个被禁用的 Zsh 内建命令）</h4>
+<p>
+这是代码中最令人惊喜的发现之一。Claude Code 有<strong>专门针对 Zsh 的威胁模型</strong>，拦截了 18 个 Zsh 特有的内建命令，包括：</p>
+<p>
+<ul></p>
+<li><strong>Zsh 等号展开攻击</strong>：<code>=curl</code> 在 Zsh 中等价于 <code>$(which curl)</code>，可以绕过对 <code>curl</code> 命令的权限检查</li>
+<li><strong>IFS 空字节注入</strong>：通过操控 IFS 变量改变命令解析行为</li>
+</ul>
+<p>
+在 HackerOne 的安全审计中，研究人员发现了一个通过畸形 token 绕过权限检查的方法，这个漏洞也被修复并加入了安全检查列表。</p>
+<p>
+<h4>第三类：Unicode 安全</h4>
+<p>
+<ul></p>
+<li><strong>零宽字符注入</strong>：Unicode 零宽空格（U+200B）可以插入命令中，视觉上看起来是合法命令，实际上是两个不同的命令</li>
+<li><strong>双向控制字符</strong>：RTL override 等字符可以颠倒显示顺序，欺骗用户确认</li>
+</ul>
+<p>
+<h4>第四类：管道与重定向分析</h4>
+<p>
+对于复合命令，系统会递归分析每个管道段和重定向目标，确保所有子命令都通过安全检查。</p>
+<p>
+<h3>3.2 权限三级体系</h3>
+<p>
+<pre><code>┌─────────────────────────────────┐</p>
+<p>│     Level 3：自动执行             │</p>
+<p>│  只读操作、低风险命令              │</p>
+<p>│  (ls, cat, git status...)       │</p>
+<p>└─────────────────────────────────┘</p>
+<p>         ↑ 需要风险评估</p>
+<p>┌─────────────────────────────────┐</p>
+<p>│     Level 2：单次确认             │</p>
+<p>│  写操作、网络请求、文件删除等       │</p>
+<p>│  每次执行前询问用户                │</p>
+<p>└─────────────────────────────────┘</p>
+<p>         ↑ 风险较高</p>
+<p>┌─────────────────────────────────┐</p>
+<p>│     Level 1：永久拒绝或需要特殊授权│</p>
+<p>│  系统级操作、危险命令              │</p>
+<p>│  rm -rf, dd, 格式化磁盘等         │</p>
+<p>└─────────────────────────────────┘</p>
+</code></pre>
+<p>
+用户可以通过"永久允许此命令"选项来提升特定命令的权限级别，这个授权会被保存到本地配置文件。</p>
+<p>
+<h3>3.3 命令沙箱与超时</h3>
+<p>
+每个 Bash 命令都在独立的子进程中执行，并有：</p>
+<ul>
+<li><strong>执行超时</strong>：防止无限挂起的命令</li>
+<li><strong>输出大小限制</strong>：防止输出溢出</li>
+<li><strong>进程组管理</strong>：确保子进程被正确清理</li>
+</ul>
+<p>
+<hr></p>
+<p>
+<h2>四、85+ 斜杠命令系统</h2>
+<p>
+<h3>4.1 命令分类</h3>
+<p>
+<code>commands/</code> 目录包含 <strong>85+ 个斜杠命令</strong>，分为以下类别：</p>
+<p>
+<strong>Git 工作流命令：</strong></p>
+<pre><code>/commit          - 智能生成 commit 信息
+<p>/pr              - 创建 Pull Request</p>
+<p>/review          - 代码审查</p>
+<p>/diff            - 显示差异</p>
+<p>/log             - 查看历史</p>
+</code></pre>
+<p>
+<strong>记忆与项目管理：</strong></p>
+<pre><code>/memory          - 查看/编辑 MEMORY.md
+<p>/todo            - 管理任务列表</p>
+<p>/project         - 项目信息</p>
+<p>/init            - 初始化项目配置</p>
+</code></pre>
+<p>
+<strong>多智能体命令：</strong></p>
+<pre><code>/agent           - 创建子 Agent
+<p>/coordinator     - 启动协调器模式</p>
+<p>/dream           - 触发记忆整合（KAIROS）</p>
+<p>/parallel        - 并行任务执行</p>
+</code></pre>
+<p>
+<strong>调试与诊断：</strong></p>
+<pre><code>/cost            - 查看当前 session 的 API 开销
+<p>/tokens          - 查看 token 使用情况</p>
+<p>/compact         - 手动触发上下文压缩</p>
+<p>/clear           - 清除对话历史</p>
+</code></pre>
+<p>
+<strong>实验性命令（feature flag 保护）：</strong></p>
+<pre><code>/ultraplan       - 启动 30 分钟远程规划会话
+<p>/kairos          - 切换到常驻模式</p>
+<p>/voice           - 启动语音接口</p>
+</code></pre>
+<p>
+<h3>4.2 命令执行架构</h3>
+<p>
+斜杠命令并不是简单的 CLI 命令，而是完整的 TypeScript 函数，可以：</p>
+<ul>
+<li>访问完整的 Agent 上下文</li>
+<li>调用任意工具</li>
+<li>修改系统提示词</li>
+<li>触发多 Agent 工作流</li>
+</ul>
+<p>
+这使得 Claude Code 的斜杠命令更像是 <strong>IDE 插件</strong>，而不是普通的命令行参数。</p>
+<p>
+<hr></p>
+<p>
+<h2>五、工程洞见：从 tools.ts 里学到什么</h2>
+<p>
+<h3>5.1 工具描述即 Prompt Engineering</h3>
+<p>
+每个工具的 <code>description</code> 字段不仅是文档，更是<strong>直接影响模型行为的 Prompt</strong>。Anthropic 在这些描述上花了大量工程时间：</p>
+<p>
+<ul></p>
+<li>描述何时<strong>应该</strong>使用这个工具</li>
+<li>描述何时<strong>不应该</strong>使用这个工具（负面示例）</li>
+<li>说明工具的边界条件和注意事项</li>
+</ul>
+<p>
+这与 Claude Code 表现出的超强工具选择能力直接相关。</p>
+<p>
+<h3>5.2 输入验证双保险</h3>
+<p>
+所有工具输入经过两道验证：</p>
+<ol>
+<li><strong>Zod Schema 结构验证</strong>：确保类型正确</li>
+<li><strong>业务逻辑验证</strong>：如文件路径不能是 <code>..</code>，命令不能含危险模式</li>
+</ol>
+<p>
+<h3>5.3 结果格式化的重要性</h3>
+<p>
+每个工具的 <code>formatResult</code> 函数经过精心设计，确保返回给模型的内容：</p>
+<ul>
+<li>足够简洁（避免占用过多上下文窗口）</li>
+<li>包含模型做下一步决策所需的所有信息</li>
+<li>失败时提供清晰的错误信息和可能的解决方向</li>
+</ul>
+<p>
+<hr></p>
+<p>
+<h2>六、小结</h2>
+<p>
+Claude Code 的 Agent 引擎和工具系统展示了一个成熟的工业级 AI Agent 的设计范式：</p>
+<p>
+<ol></p>
+<li><strong>工具即接口</strong>：工具定义 Agent 能做什么，描述决定 Agent 什么时候做</li>
+<li><strong>安全是第一公民</strong>：BashTool 的 23 项安全检查说明 Anthropic 认真对待了 Agent 执行任意代码的风险</li>
+<li><strong>成本驱动架构</strong>：autoCompact、prompt cache 优化等机制说明 Token 成本直接影响架构决策</li>
+<li><strong>递归 Agent 模式</strong>：AgentTool 的设计为多智能体协作提供了基础</li>
+</ol>
+<p>
+下一篇我们将深入分析 Claude Code 最令人惊艳的技术创新之一：<strong>三层记忆架构</strong>。</p>
+<p>
+<hr></p>
+<p>
+<em>本文基于公开技术分析报告，仅用于教育目的。</em></p>
+
+        </article>
+
+        <footer class="footer">
+            <p>© 2026 Claude Code Source Code Analysis Series | 基于泄露源码的技术教育分析</p>
+        </footer>
+    </div>
+</body>
+</html>
